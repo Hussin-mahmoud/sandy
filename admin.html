@@ -6,6 +6,10 @@
     <title>إدارة سندي | Admin</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+
     <style>
         body { background: #0f172a; color: white; font-family: 'Cairo', sans-serif; transition: 0.2s; }
         .admin-box { background: #1e293b; border-radius: 20px; padding: 25px; margin-top: 30px; }
@@ -42,23 +46,27 @@
     </div>
 
     <script>
+        // إعدادات Firebase الخاصة برابطك
+        const firebaseConfig = {
+            databaseURL: "https://sandy-66c02-default-rtdb.firebaseio.com/"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
         let audioCtx = null;
         let audioEnabled = false;
 
-        // دالة الصوت السريع (نبضة قصيرة وحادة)
         function playFastBeep() {
             if (!audioEnabled || !audioCtx) return;
             let osc = audioCtx.createOscillator();
             let gain = audioCtx.createGain();
             osc.connect(gain);
             gain.connect(audioCtx.destination);
-            
-            osc.type = "square"; // صوت "مربع" أوضح وأقوى من الـ sine
-            osc.frequency.value = 1000; // تردد أعلى (صوت أرفع)
+            osc.type = "square"; 
+            osc.frequency.value = 1000; 
             gain.gain.value = 0.1;
-            
             osc.start();
-            osc.stop(audioCtx.currentTime + 0.1); // النبضة مدتها 0.1 ثانية فقط (سريعة جداً)
+            osc.stop(audioCtx.currentTime + 0.1);
         }
 
         function enableAudio() {
@@ -74,62 +82,67 @@
             if(document.getElementById('pass').value === "123456") {
                 document.getElementById('loginSection').classList.add('d-none');
                 document.getElementById('dashboard').classList.remove('d-none');
-                render();
-                // تحديث القائمة كل ثانية لمتابعة أسرع
-                setInterval(render, 1000); 
+                startSync();
             } else { alert("كلمة السر خطأ"); }
         }
 
-        function render() {
-            const reqs = JSON.parse(localStorage.getItem('adminRequests') || '[]');
-            const container = document.getElementById('listContainer');
-            const hasPending = reqs.some(r => r.status === 'pending');
+        function startSync() {
+            // المزامنة اللحظية مع Firebase
+            db.ref('requests').on('value', (snapshot) => {
+                const data = snapshot.val();
+                const container = document.getElementById('listContainer');
+                const requests = [];
+                
+                if (data) {
+                    Object.keys(data).forEach(key => {
+                        requests.push({ id: key, ...data[key] });
+                    });
+                }
 
-            if(hasPending) {
-                playFastBeep(); // هيفضل يصفر بسرعة مع كل تحديث (كل ثانية)
-                document.getElementById('alertTxt').classList.remove('d-none');
-                document.body.classList.add('new-order-alert');
-            } else {
-                document.getElementById('alertTxt').classList.add('d-none');
-                document.body.classList.remove('new-order-alert');
-            }
+                const hasPending = requests.some(r => r.status === 'pending');
 
-            container.innerHTML = reqs.length === 0 ? '<p class="text-center opacity-50">لا يوجد طلبات</p>' : '';
-            
-            [...reqs].reverse().forEach(r => {
-                const isApproved = r.status === 'approved';
-                container.innerHTML += `
-                    <div class="request-card ${isApproved ? 'approved' : ''}">
-                        <div class="d-flex justify-content-between">
-                            <h5 class="text-info">${r.userName}</h5>
-                            <span class="small opacity-50">${r.time}</span>
+                if(hasPending) {
+                    playFastBeep();
+                    document.getElementById('alertTxt').classList.remove('d-none');
+                    document.body.classList.add('new-order-alert');
+                } else {
+                    document.getElementById('alertTxt').classList.add('d-none');
+                    document.body.classList.remove('new-order-alert');
+                }
+
+                container.innerHTML = requests.length === 0 ? '<p class="text-center opacity-50">لا يوجد طلبات</p>' : '';
+                
+                requests.reverse().forEach(r => {
+                    const isApproved = r.status === 'approved';
+                    container.innerHTML += `
+                        <div class="request-card ${isApproved ? 'approved' : ''}">
+                            <div class="d-flex justify-content-between">
+                                <h5 class="text-info">${r.userName}</h5>
+                                <span class="small opacity-50">${r.time}</span>
+                            </div>
+                            <div class="row mt-1 small">
+                                <div class="col-6">📱 ${r.userPhone}</div>
+                                <div class="col-6">📍 ${r.userAddress || '---'}</div>
+                            </div>
+                            <p class="mt-2 mb-2">🛠️ ${r.detail}</p>
+                            <div class="d-flex gap-2">
+                                ${!isApproved ? `<button class="btn btn-success btn-sm w-100" onclick="approve('${r.id}')">✅ قبول</button>` : ''}
+                                <button class="btn btn-danger btn-sm ${isApproved ? 'w-100' : ''}" onclick="remove('${r.id}')">🗑️ حذف</button>
+                            </div>
                         </div>
-                        <div class="row mt-1 small">
-                            <div class="col-6">📱 ${r.userPhone}</div>
-                            <div class="col-6">📍 ${r.userAddress || '---'}</div>
-                        </div>
-                        <p class="mt-2 mb-2">🛠️ ${r.detail}</p>
-                        <div class="d-flex gap-2">
-                            ${!isApproved ? `<button class="btn btn-success btn-sm w-100" onclick="approve(${r.id})">✅ قبول</button>` : ''}
-                            <button class="btn btn-danger btn-sm ${isApproved ? 'w-100' : ''}" onclick="remove(${r.id})">🗑️ حذف</button>
-                        </div>
-                    </div>
-                `;
+                    `;
+                });
             });
         }
 
         function approve(id) {
-            let reqs = JSON.parse(localStorage.getItem('adminRequests'));
-            reqs = reqs.map(r => r.id === id ? {...r, status: 'approved'} : r);
-            localStorage.setItem('adminRequests', JSON.stringify(reqs));
-            render();
+            db.ref('requests/' + id).update({ status: 'approved' });
         }
 
         function remove(id) {
-            let reqs = JSON.parse(localStorage.getItem('adminRequests'));
-            reqs = reqs.filter(r => r.id !== id);
-            localStorage.setItem('adminRequests', JSON.stringify(reqs));
-            render();
+            if(confirm("هل أنت متأكد من الحذف؟")) {
+                db.ref('requests/' + id).remove();
+            }
         }
     </script>
 </body>
