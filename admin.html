@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <link rel="icon" type="image/png" href="logo.png">
+    <meta charset="UTF-8">
+    <title>إدارة سندي | Admin</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body { background: #0f172a; color: white; font-family: 'Cairo', sans-serif; transition: 0.2s; }
+        .admin-box { background: #1e293b; border-radius: 20px; padding: 25px; margin-top: 30px; }
+        .request-card { background: #334155; border-radius: 12px; padding: 15px; margin-bottom: 15px; border-right: 5px solid #008080; }
+        .request-card.approved { border-right-color: #28a745; background: #1e293b; opacity: 0.8; }
+        
+        /* فلاش تنبيه أحمر سريع */
+        .new-order-alert { background: #7f1d1d !important; }
+        
+        .status-blink { color: #ff4444; animation: blink 0.5s infinite; font-weight: bold; }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.1; } 100% { opacity: 1; } }
+        
+        #audioBtn { position: fixed; bottom: 20px; left: 20px; z-index: 1000; padding: 15px 25px; font-weight: bold; border-radius: 50px; }
+    </style>
+</head>
+<body>
+
+    <button id="audioBtn" class="btn btn-danger shadow-lg" onclick="enableAudio()">⚠️ اضغط لتفعيل التنبيه السريع</button>
+
+    <div id="loginSection" class="container text-center mt-5">
+        <div class="admin-box d-inline-block" style="min-width: 350px;">
+            <h4>دخول المسؤول</h4>
+            <input type="password" id="pass" class="form-control my-3 text-center" placeholder="كلمة السر">
+            <button class="btn btn-info w-100" onclick="checkLogin()">دخول</button>
+        </div>
+    </div>
+
+    <div id="dashboard" class="container d-none">
+        <div class="d-flex justify-content-between align-items-center mt-4">
+            <h2>لوحة تحكم سندي</h2>
+            <div id="alertTxt" class="status-blink d-none">🚀 تنبيه سريع: طلبات جديدة!</div>
+        </div>
+        <div id="listContainer" class="admin-box"></div>
+    </div>
+
+    <script>
+        let audioCtx = null;
+        let audioEnabled = false;
+
+        // دالة الصوت السريع (نبضة قصيرة وحادة)
+        function playFastBeep() {
+            if (!audioEnabled || !audioCtx) return;
+            let osc = audioCtx.createOscillator();
+            let gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.type = "square"; // صوت "مربع" أوضح وأقوى من الـ sine
+            osc.frequency.value = 1000; // تردد أعلى (صوت أرفع)
+            gain.gain.value = 0.1;
+            
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.1); // النبضة مدتها 0.1 ثانية فقط (سريعة جداً)
+        }
+
+        function enableAudio() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            audioEnabled = true;
+            document.getElementById('audioBtn').classList.replace('btn-danger', 'btn-success');
+            document.getElementById('audioBtn').innerText = "✅ نظام التنبيه جاهز";
+            setTimeout(() => { document.getElementById('audioBtn').style.display = 'none'; }, 2000);
+            playFastBeep();
+        }
+
+        function checkLogin() {
+            if(document.getElementById('pass').value === "123456") {
+                document.getElementById('loginSection').classList.add('d-none');
+                document.getElementById('dashboard').classList.remove('d-none');
+                render();
+                // تحديث القائمة كل ثانية لمتابعة أسرع
+                setInterval(render, 1000); 
+            } else { alert("كلمة السر خطأ"); }
+        }
+
+        function render() {
+            const reqs = JSON.parse(localStorage.getItem('adminRequests') || '[]');
+            const container = document.getElementById('listContainer');
+            const hasPending = reqs.some(r => r.status === 'pending');
+
+            if(hasPending) {
+                playFastBeep(); // هيفضل يصفر بسرعة مع كل تحديث (كل ثانية)
+                document.getElementById('alertTxt').classList.remove('d-none');
+                document.body.classList.add('new-order-alert');
+            } else {
+                document.getElementById('alertTxt').classList.add('d-none');
+                document.body.classList.remove('new-order-alert');
+            }
+
+            container.innerHTML = reqs.length === 0 ? '<p class="text-center opacity-50">لا يوجد طلبات</p>' : '';
+            
+            [...reqs].reverse().forEach(r => {
+                const isApproved = r.status === 'approved';
+                container.innerHTML += `
+                    <div class="request-card ${isApproved ? 'approved' : ''}">
+                        <div class="d-flex justify-content-between">
+                            <h5 class="text-info">${r.userName}</h5>
+                            <span class="small opacity-50">${r.time}</span>
+                        </div>
+                        <div class="row mt-1 small">
+                            <div class="col-6">📱 ${r.userPhone}</div>
+                            <div class="col-6">📍 ${r.userAddress || '---'}</div>
+                        </div>
+                        <p class="mt-2 mb-2">🛠️ ${r.detail}</p>
+                        <div class="d-flex gap-2">
+                            ${!isApproved ? `<button class="btn btn-success btn-sm w-100" onclick="approve(${r.id})">✅ قبول</button>` : ''}
+                            <button class="btn btn-danger btn-sm ${isApproved ? 'w-100' : ''}" onclick="remove(${r.id})">🗑️ حذف</button>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function approve(id) {
+            let reqs = JSON.parse(localStorage.getItem('adminRequests'));
+            reqs = reqs.map(r => r.id === id ? {...r, status: 'approved'} : r);
+            localStorage.setItem('adminRequests', JSON.stringify(reqs));
+            render();
+        }
+
+        function remove(id) {
+            let reqs = JSON.parse(localStorage.getItem('adminRequests'));
+            reqs = reqs.filter(r => r.id !== id);
+            localStorage.setItem('adminRequests', JSON.stringify(reqs));
+            render();
+        }
+    </script>
+</body>
+</html>
