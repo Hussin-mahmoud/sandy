@@ -55,6 +55,7 @@
 
         let audioCtx = null;
         let audioEnabled = false;
+        let alarmInterval = null; // متغير للتحكم في تكرار الصوت
 
         function playFastBeep() {
             if (!audioEnabled || !audioCtx) return;
@@ -101,13 +102,24 @@
 
                 const hasPending = requests.some(r => r.status === 'pending');
 
+                // إدارة تكرار التنبيه الصوتي
                 if(hasPending) {
-                    playFastBeep();
                     document.getElementById('alertTxt').classList.remove('d-none');
                     document.body.classList.add('new-order-alert');
+                    
+                    // لو التنبيه مش شغال.. شغله يكرر كل ثانيتين
+                    if (!alarmInterval) {
+                        alarmInterval = setInterval(playFastBeep, 2000);
+                    }
                 } else {
                     document.getElementById('alertTxt').classList.add('d-none');
                     document.body.classList.remove('new-order-alert');
+                    
+                    // وقف التكرار فوراً لو مفيش طلبات جديدة
+                    if (alarmInterval) {
+                        clearInterval(alarmInterval);
+                        alarmInterval = null;
+                    }
                 }
 
                 container.innerHTML = requests.length === 0 ? '<p class="text-center opacity-50">لا يوجد طلبات</p>' : '';
